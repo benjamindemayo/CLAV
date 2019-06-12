@@ -1,0 +1,263 @@
+---
+title: "Nick Moores CLAV Data Analysis"
+author: "Nick Moores"
+date: "June 5, 2015"
+output:
+  html_document:
+    highlight: pygments
+    theme: flatly
+  pdf_document: default
+---
+
+###Intro and Imports
+I first clear all previous variables and load libraries for data manipulation and graphing
+```{r message=FALSE}
+rm(list=ls())
+
+library(psych)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(stringdist)
+library(irr)
+library(gpairs)
+library(mcmc)
+library(boot)
+library(mlogit)
+library(corrplot)
+library(GPArotation)
+library(RColorBrewer)
+library(GGally)
+library(lme4)
+library(lmerTest)
+library(grid)
+library(reshape2)
+```
+
+And define some useful functions for computing measurement error
+```{r}
+sem <- function(x) {sd(x)/sqrt(length(x))}
+ci95 <- function(x) {3.96*sem(x)}
+```
+
+And I load in the data from the data files:
+```{r}
+d <- data.frame() #initializes df var
+files <- dir("~/Documents/Research/CLAV_iPad/ResultsCSVs/",pattern="*.csv")
+
+for (f in files) { #iterates through folder
+  df <- read.csv(paste("~/Documents/Research/CLAV_iPad/ResultsCSVs/",
+                       f,sep=""))
+  d <- rbind(d, df) #constructs master dataframe
+}
+glimpse(d)
+```
+
+###Clean the Dataframe
+
+***Clip RTs outside 2 SDs***
+
+I get a sense of the distribution of the data
+```{r}
+m.rt <- exp(mean(log(d$RT),na.rm=TRUE)) #take log average of RT: average natural logs of RTs, then take the exponential of that
+sd.rt <- exp(sd(log(d$RT),na.rm=TRUE)) #geometric standard deviation: exponentiated value of the standard deviation of the log-transformed values
+qplot(RT, data=d) + 
+  geom_vline(xintercept=m.rt + 2*sd.rt, col="red", lty=2) + #lets us view how much is spread 2 SDs above mean
+  geom_vline(xintercept=m.rt - 2*sd.rt, col="red", lty=2) + #lets us view how much is spread 2 SDs below mean
+  xlab("RT spread") +
+  ylab("Frequency") +
+  ggtitle("RT Histogram of CLAV Data (marking +/- 2 SDs)")
+```
+
+And I subset the data, such that it excludes trials where the reaction time was greater than +-2 SDs from the mean.
+```{r}
+with(d, mean(RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt)) #calculate the mean to check what it is in console
+df <- subset(d, RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt) #get the subset of the df between 2 SDs of mean (dat's legit, man)
+df <- subset(d, RT > 0) #gets rid of negative RTs
+##change up some minor aesthetic details##
+#df <- subset(df,select=-c(X)) #remove the mysterious X column
+df$subjectID <- factor(df$subjectID) #convert subjectID to a factor
+df$is.correct <- df$clicked==df$correct #add a correct column as a logical of whether 'clicked' matched 'correct'
+```
+
+***Merge in Demographics***
+```{r}
+glimpse(df) #quick overview of the df before the merge
+demos <- read.csv("~/Documents/Research/CLAV_iPad/clav_demographics.csv")
+glimpse(demos) #get a quick look at the demos file to see if something's amiss
+df <- merge(df, demos, by.x="subjectID", by.y="subjectID") #by.x says in the df, merge by subjectID and by.y says in the demos df merge by subjectID 
+df$age <- factor(df$age)
+correct_df <- df %>% filter(is.correct==TRUE)
+glimpse(df) #check this to make sure it merged correctly!
+```
+
+###Analysis: Aggregating Mean RTs and Proportion Correct
+
+```{r}
+plot.style <- theme(panel.grid.major=element_blank(), legend.position="right", plot.title=element_text(face="bold", size=14), axis.title=element_text(size=12))
+PD <- position_dodge(.9)
+
+####Plot Reaction Time by Age
+#quartz()
+rts <- aggregate(RT ~ has_comp + age, correct_df, mean) #aggregate mean RTs by voice, trial type
+rts.sd <- aggregate(RT ~ has_comp + age, correct_df, sd)
+rts.SEM <- aggregate(RT ~ has_comp + age, correct_df, sem)
+rts$SEM <- rts.SEM[,3]
+
+rts
+rts.sd
+
+#quartz()
+qplot(age, RT, fill=has_comp, #plot bar graph with aggregated means dataframe
+      geom="bar",
+      position="dodge",
+      stat="identity",
+      data=rts) +
+      geom_errorbar(aes(ymin=RT-SEM, ymax=RT+SEM), colour="black", width=.2, position=PD) +
+      xlab("Subject Age") +
+      ylab("RT (mean)") +
+      ggtitle("Reaction Time by Trial Type and Age") +
+      scale_fill_discrete(name="Trial\nType",labels=c("Competitor","No Competitor")) + plot.style +
+  geom_text(aes(2.1,4,label="*"),colour="black",size=8)
+
+####Plot Proportion Correct by Age
+prop.correct <- aggregate(is.correct ~ has_comp + age, df, mean)
+prop.correct.sd <- aggregate(is.correct ~ has_comp + age, df, sd)
+prop.correct.SEM <- aggregate(is.correct ~ has_comp + age, df, sem)
+prop.correct$SEM <- prop.correct.SEM[,3]
+
+prop.correct
+prop.correct.sd
+
+#quartz()
+qplot(age, is.correct, fill=has_comp, #plot bar graph with aggregated corrects dataframe
+      geom="bar",
+      position="dodge",
+      stat="identity",
+      data=prop.correct) +
+  geom_errorbar(aes(ymin=is.correct-SEM, ymax=is.correct+SEM), colour="black", width=.2, position=PD) +
+  geom_hline(yintercept=.50,linetype="dashed") +
+  xlab("Subject Age") +
+  ylab("Proportion Correct (mean)") +
+  ggtitle("Proportion Correct by Trial Type and Age") +
+  scale_fill_discrete(name="Trial\nType",labels=c("Competitor","No Competitor")) +
+  plot.style +
+  geom_text(aes(1.9,0.99,label="***"),colour="black",size=8) + 
+  geom_text(aes(2.9,0.99,label="**"),colour="black",size=8)
+```
+
+###Mixed Effects Modeling for Proportion Correct
+
+```{r}
+###Mixed Effect Correct Model without Interaction
+stereotype.mixed.model <- glmer(is.correct ~ age + voice_type + has_comp + (1|subjectID) + 
+                           (1|tar_name), data=df, family=binomial, na.action=na.omit) 
+summary(stereotype.mixed.model)
+###Mixed Effect Correct Model with Gender, no interaction
+stereotype.mixed.gender.model <- glmer(is.correct ~ age + gender + voice_type + has_comp + (1|subjectID) + 
+                                  (1|tar_name), data=df, family=binomial, na.action=na.omit) 
+summary(stereotype.mixed.gender.model)
+###Compare the age and age + gender models
+anova(stereotype.mixed.model,stereotype.mixed.gender.model)
+
+###Mixed Effect Correct Model with Gender, with interaction
+stereotype.mixed.gender.int.model <- glmer(is.correct ~ age * gender + voice_type + has_comp + (1|subjectID) + 
+                                         (1|tar_name), data=df, family=binomial, na.action=na.omit) 
+summary(stereotype.mixed.gender.int.model)
+
+###Compare the age + gender and age * gender models
+anova(stereotype.mixed.gender.model,stereotype.mixed.gender.int.model) #interaction terms dont give a significantly better model
+```
+
+A model with a coefficient for gender provided significantly better fit to the data, ($\chi^2_1 = 9.37$, $p = 0.0002$), whereas a model with an age by gender interaction did not ($\chi^2_2 = 0.55$, $p = 0.759$).
+
+###Mixed Effects Modeling for Reaction Time
+```{r}
+rts.stereotype.mixed.gender.model <- lmer(RT ~ age + gender + voice_type + has_comp + (1|subjectID) + 
+                                  (1|tar_name), data=correct_df, na.action=na.omit) 
+summary(rts.stereotype.mixed.gender.model)
+
+rts
+rts.sd
+```
+
+In each case, the children are faster to make a selection during noncritical trials than during critical trials ($\beta = -0.61$, $SE=0.22$, $t(1028)=-2.826$, $p = 0.005$), with children generally getting faster in the competitor trials as they get older (3 year olds: $M=5.21$, $SD=6.16$; 4 year olds: $M==4.49$, $SD=2.22$; 5 year olds: $M=4.08$, $SD=4.344$). Only 4 year olds are significantly faster on non-competitor trials ($\beta = -1.16$, $SE=0.57$, $t(55)=-2.041$, $p=0.046$).
+
+###Measure Potential Item Effects
+```{r}
+
+```
+
+###Measure Gender Effects Across Age
+```{r}
+correct.gender <- aggregate(is.correct ~ has_comp + gender, df, mean)
+correct.gender.sd <- aggregate(is.correct ~ has_comp + gender, df, sd)
+correct.gender.SEM <- aggregate(is.correct ~ has_comp + gender, df, sem)
+correct.gender$SEM <- correct.gender.SEM[,3]
+
+correct.gender
+correct.gender.sd
+
+#quartz()
+qplot(gender, is.correct, fill=has_comp, #plot bar graph with aggregated corrects dataframe
+      geom="bar",
+      position="dodge",
+      stat="identity",
+      data=correct.gender) +
+  geom_errorbar(aes(ymin=is.correct-SEM, ymax=is.correct+SEM), colour="black", width=.2, position=PD) +
+  geom_hline(yintercept=.50,linetype="dashed") +
+  xlab("Subject Gender") +
+  ylab("Proportion Correct (mean)") +
+  ggtitle("Proportion Correct by Trial Type and Gender") +
+  scale_fill_discrete(name="Trial\nType",labels=c("Competitor","No Competitor")) +
+  plot.style +
+  geom_text(aes(1.6,0.99,label="**"),colour="black",size=8)
+```
+
+We see that during competitor trials, girls perform successfully during $66.4%$ of trials, while males only perform successfully $56.2%$ of the time (for girls, $SD=47.2%$, and for boys, $SD=49.7%$.
+
+###Measure Gender Effects Within Age
+```{r}
+
+```
+
+###Measure Effect Size
+Cohen's d is a descriptive statistic used to estimate the sample size necessary to see an effect with substantial statistical power. 
+
+$$d = (m1 - m2)/sd$$ for your sample population. This is a good thing to calculate after you have pilot data, as
+it gives you an idea of how many subjects you will need in total
+to get a main effect with substantial size.
+
+Effect size is a measure of the strength of a phenomenon; it conveys the estimated magnitude of a relationship without making any statement about whether the apparent relationship in the data reflects a true relationship in the population.
+
+A lower Cohen's d indicates the necessity of larger sample sizes, and can be determined together with the additional parameters of desired significance level (p > .05, duh) and statistical power
+
+```{r}
+mean_correct <- aggregate(is.correct ~ has_comp, df, mean) #calculate mean correct by condition
+sd_correct <- aggregate(is.correct ~ has_comp, df, sd) #calculate sd correct by condition
+```
+
+Divide `(no_competitor correct minus competitor correct)` from `mean_correct` by `sd(df$is.correct)` to get Cohen's $d$.
+```{r}
+mean_correct #check to see which mean is higher (no_competitor)
+m1_minus_m2 <- mean_correct$is.correct[2] - mean_correct$is.correct[1]
+cohens_d <- m1_minus_m2 / sd(df$is.correct) #calculate cohen's d
+cohens_d #for critical as opposed to noncritical
+
+num3_4 <- prop.correct$is.correct[3] - prop.correct$is.correct[1]
+cohens_d2 <- num3_4 / sd(df$is.correct)
+cohens_d2 #4s as opposed to 3s
+
+num3_5 <- prop.correct$is.correct[5] - prop.correct$is.correct[1]
+cohens_d3 <- num3_5 / sd(df$is.correct)
+cohens_d3 #5s as opposed to 3s
+
+gender_effect <- correct.gender$is.correct[1] - correct.gender$is.correct[3]
+cohens_d4 <- gender_effect / sd(df$is.correct)
+cohens_d4 #gender effect size
+
+rt_effect <- correct.gender$is.correct[1] - correct.gender$is.correct[3]
+cohens_d5 <- rts / sd(df$RT)
+cohens_d5 #RT effect size
+```
+We see here that the effect size for 5s as opposed to 3s is $d = `r round(cohens_d3,2)`$, corresponding to a medium effect, and the effect size for the gender effect is $d = `r round(cohens_d4,2)`$, corresponding to a small effect.
