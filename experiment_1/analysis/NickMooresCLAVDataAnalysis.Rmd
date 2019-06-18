@@ -14,10 +14,8 @@ I first clear all previous variables and load libraries for data manipulation an
 ```{r message=FALSE}
 rm(list=ls())
 
+library(tidyverse)
 library(psych)
-library(tidyr)
-library(dplyr)
-library(ggplot2)
 library(stringdist)
 library(irr)
 library(gpairs)
@@ -32,25 +30,26 @@ library(lme4)
 library(lmerTest)
 library(grid)
 library(reshape2)
+library(fs)
+
+project_root <- here::here()
 ```
 
 And define some useful functions for computing measurement error
 ```{r}
+#probably unnecessary 
 sem <- function(x) {sd(x)/sqrt(length(x))}
 ci95 <- function(x) {3.96*sem(x)}
 ```
 
-And I load in the data from the data files:
+Load in the data from the data files:
 ```{r}
-d <- data.frame() #initializes df var
-files <- dir("~/Documents/Research/CLAV_iPad/ResultsCSVs/",pattern="*.csv")
+files <- dir_ls(path(project_root, "experiment_1", "data")) #make vector of file paths
 
-for (f in files) { #iterates through folder
-  df <- read.csv(paste("~/Documents/Research/CLAV_iPad/ResultsCSVs/",
-                       f,sep=""))
-  d <- rbind(d, df) #constructs master dataframe
-}
-glimpse(d)
+d <- 
+  files %>% 
+  map_df(~read_csv(.)) #read all of the CSV's into one data frame
+
 ```
 
 ###Clean the Dataframe
@@ -59,11 +58,13 @@ glimpse(d)
 
 I get a sense of the distribution of the data
 ```{r}
-m.rt <- exp(mean(log(d$RT),na.rm=TRUE)) #take log average of RT: average natural logs of RTs, then take the exponential of that
-sd.rt <- exp(sd(log(d$RT),na.rm=TRUE)) #geometric standard deviation: exponentiated value of the standard deviation of the log-transformed values
-qplot(RT, data=d) + 
-  geom_vline(xintercept=m.rt + 2*sd.rt, col="red", lty=2) + #lets us view how much is spread 2 SDs above mean
-  geom_vline(xintercept=m.rt - 2*sd.rt, col="red", lty=2) + #lets us view how much is spread 2 SDs below mean
+
+  
+m.rt <- exp(mean(log(d$RT),na.rm = TRUE)) #take log average of RT: average natural logs of RTs, then take the exponential of that
+sd.rt <- exp(sd(log(d$RT),na.rm = TRUE)) #geometric standard deviation: exponentiated value of the standard deviation of the log-transformed values
+qplot(RT, data = d) + 
+  geom_vline(xintercept = m.rt + 2*sd.rt, col = "red", lty = 2) + #lets us view how much is spread 2 SDs above mean
+  geom_vline(xintercept = m.rt - 2*sd.rt, col = "red", lty = 2) + #lets us view how much is spread 2 SDs below mean
   xlab("RT spread") +
   ylab("Frequency") +
   ggtitle("RT Histogram of CLAV Data (marking +/- 2 SDs)")
@@ -71,18 +72,22 @@ qplot(RT, data=d) +
 
 And I subset the data, such that it excludes trials where the reaction time was greater than +-2 SDs from the mean.
 ```{r}
-with(d, mean(RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt)) #calculate the mean to check what it is in console
-df <- subset(d, RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt) #get the subset of the df between 2 SDs of mean (dat's legit, man)
-df <- subset(d, RT > 0) #gets rid of negative RTs
-##change up some minor aesthetic details##
-#df <- subset(df,select=-c(X)) #remove the mysterious X column
-df$subjectID <- factor(df$subjectID) #convert subjectID to a factor
-df$is.correct <- df$clicked==df$correct #add a correct column as a logical of whether 'clicked' matched 'correct'
+with(d, mean(RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt)) 
+#calculate the mean to check what it is in console
+#from Benny - idk what this is for
+
+df <- 
+  d %>% 
+  filter(RT > m.rt - (2 * sd.rt) & RT < m.rt + (2 * sd.rt)) %>% 
+  mutate(
+    subjectID = factor(subjectID), #convert subjectID to a factor
+    is.correct = clicked == correct #add a correct column as a logical of whether 'clicked' matched 'correct'
+  )
+
 ```
 
 ***Merge in Demographics***
 ```{r}
-glimpse(df) #quick overview of the df before the merge
 demos <- read.csv("~/Documents/Research/CLAV_iPad/clav_demographics.csv")
 glimpse(demos) #get a quick look at the demos file to see if something's amiss
 df <- merge(df, demos, by.x="subjectID", by.y="subjectID") #by.x says in the df, merge by subjectID and by.y says in the demos df merge by subjectID 
