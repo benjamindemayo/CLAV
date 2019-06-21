@@ -32,7 +32,11 @@ library(grid)
 library(reshape2)
 library(fs)
 
+
+#file paths
 project_root <- here::here()
+files <- dir_ls(path(project_root, "experiment_1", "data"))
+demographics <- 
 ```
 
 And define some useful functions for computing measurement error
@@ -44,7 +48,7 @@ ci95 <- function(x) {3.96*sem(x)}
 
 Load in the data from the data files:
 ```{r}
-files <- dir_ls(path(project_root, "experiment_1", "data")) #make vector of file paths
+ #make vector of file paths
 
 d <- 
   files %>% 
