@@ -76,31 +76,61 @@ qplot(RT, data = d) +
 
 And I subset the data, such that it excludes trials where the reaction time was greater than +-2 SDs from the mean.
 ```{r}
+demos <- read_csv(demographics)
+
 with(d, mean(RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt)) 
 #calculate the mean to check what it is in console
 #from Benny - idk what this is for
+
+```
+
+
+### Merge in demographics
+```{r}
 
 df <- 
   d %>% 
   filter(RT > m.rt - (2 * sd.rt) & RT < m.rt + (2 * sd.rt)) %>% 
   mutate(
-    subjectID = factor(subjectID), #convert subjectID to a factor
-    is.correct = clicked == correct #add a correct column as a logical of whether 'clicked' matched 'correct'
+    is.correct = clicked == correct, 
+    #add a correct column as a logical of whether 'clicked' matched 'correct'
+  ) %>% 
+  left_join(demos, by = "subjectID") %>% 
+  mutate(
+    subjectID = factor(subjectID),
+    age = factor(age)
   )
 
+
 ```
 
-***Merge in Demographics***
-```{r}
-demos <- read_csv(demographics)
-glimpse(demos) #get a quick look at the demos file to see if something's amiss
-df <- merge(df, demos, by.x="subjectID", by.y="subjectID") #by.x says in the df, merge by subjectID and by.y says in the demos df merge by subjectID 
-df$age <- factor(df$age)
-correct_df <- df %>% filter(is.correct==TRUE)
-glimpse(df) #check this to make sure it merged correctly!
-```
 
 ###Analysis: Aggregating Mean RTs and Proportion Correct
+
+```{r}
+summary_df <- 
+  df %>% 
+  group_by(subjectID, age, has_comp) %>% 
+  summarize(prop_correct = mean(is.correct, na.rm = TRUE))
+
+e1_barplot <- 
+  summary_df %>% 
+  ggplot(aes(age, fill = has_comp)) +
+  stat_summary_bin(
+    aes(y = prop_correct), 
+    fun.y = "mean", 
+    geom = "bar",
+    position = "dodge"
+  )
+
+e1_barplot
+
+# summary_df %>% 
+#   ungroup() %>% 
+#   group_by(age, has_comp) %>% 
+#   langcog::multi_boot_standard(col = "prop_correct")
+```
+
 
 ```{r}
 plot.style <- theme(panel.grid.major=element_blank(), legend.position="right", plot.title=element_text(face="bold", size=14), axis.title=element_text(size=12))
