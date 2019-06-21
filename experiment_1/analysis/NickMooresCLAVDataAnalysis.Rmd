@@ -36,7 +36,7 @@ library(fs)
 #file paths
 project_root <- here::here()
 files <- dir_ls(path(project_root, "experiment_1", "data"))
-demographics <- 
+demographics <- path(project_root, "clav_demographics.csv")
 ```
 
 And define some useful functions for computing measurement error
@@ -92,7 +92,7 @@ df <-
 
 ***Merge in Demographics***
 ```{r}
-demos <- read.csv("~/Documents/Research/CLAV_iPad/clav_demographics.csv")
+demos <- read_csv(demographics)
 glimpse(demos) #get a quick look at the demos file to see if something's amiss
 df <- merge(df, demos, by.x="subjectID", by.y="subjectID") #by.x says in the df, merge by subjectID and by.y says in the demos df merge by subjectID 
 df$age <- factor(df$age)
