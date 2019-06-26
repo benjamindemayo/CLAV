@@ -9,7 +9,7 @@ output:
   pdf_document: default
 ---
 
-###Intro and Imports
+### Intro and Imports
 I first clear all previous variables and load libraries for data manipulation and graphing
 ```{r message=FALSE}
 rm(list=ls())
@@ -39,15 +39,8 @@ files <- dir_ls(path(project_root, "experiment_1", "data"))
 demographics <- path(project_root, "clav_demographics.csv")
 ```
 
-And define some useful functions for computing measurement error
-```{r}
-#probably unnecessary 
-sem <- function(x) {sd(x)/sqrt(length(x))}
-ci95 <- function(x) {3.96*sem(x)}
-```
-
 Load in the data from the data files:
-```{r}
+```{r message=FALSE}
  #make vector of file paths
 
 d <- 
@@ -56,16 +49,43 @@ d <-
 
 ```
 
-###Clean the Dataframe
+### Descriptives
+
+```{r}
+#count the number of subjects and their counterbalance conditions
+subs <- d %>% 
+  group_by(subjectID, list_number) %>%
+  count
+
+subs
+```
+We find that there is some bug (?) such that occasionally identical trials are repeated. These should likely be dropped. 
+
+```{r}
+
+A <- filter(d, subjectID %in% c(21))
+```
+
+```{r}
+count(ungroup(subs))
+```
+
+
+
+### Clean the Dataframe
 
 ***Clip RTs outside 2 SDs***
 
 I get a sense of the distribution of the data
 ```{r}
 
-  
-m.rt <- exp(mean(log(d$RT),na.rm = TRUE)) #take log average of RT: average natural logs of RTs, then take the exponential of that
+m.rt <- exp(mean(log(d$RT),na.rm = TRUE)) 
+#take log average of RT: average natural logs of RTs, then take the exponential of that
+
+#from benny - why is he doing thhis log thing?
+
 sd.rt <- exp(sd(log(d$RT),na.rm = TRUE)) #geometric standard deviation: exponentiated value of the standard deviation of the log-transformed values
+
 qplot(RT, data = d) + 
   geom_vline(xintercept = m.rt + 2*sd.rt, col = "red", lty = 2) + #lets us view how much is spread 2 SDs above mean
   geom_vline(xintercept = m.rt - 2*sd.rt, col = "red", lty = 2) + #lets us view how much is spread 2 SDs below mean
@@ -76,7 +96,8 @@ qplot(RT, data = d) +
 
 And I subset the data, such that it excludes trials where the reaction time was greater than +-2 SDs from the mean.
 ```{r}
-demos <- read_csv(demographics)
+demos <- 
+  read_csv(demographics)
 
 with(d, mean(RT > m.rt - 2*sd.rt & RT < m.rt + 2*sd.rt)) 
 #calculate the mean to check what it is in console
@@ -111,24 +132,51 @@ df <-
 summary_df <- 
   df %>% 
   group_by(subjectID, age, has_comp) %>% 
-  summarize(prop_correct = mean(is.correct, na.rm = TRUE))
+  summarize(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  group_by(age, has_comp) %>% 
+  langcog::multi_boot_standard(col = "prop_correct")
 
-e1_barplot <- 
-  summary_df %>% 
+ 
+summary_df %>% 
   ggplot(aes(age, fill = has_comp)) +
-  stat_summary_bin(
-    aes(y = prop_correct), 
-    fun.y = "mean", 
-    geom = "bar",
-    position = "dodge"
-  )
-
-e1_barplot
+  geom_col(aes(y = mean), position = "dodge", width = 1) +
+  geom_errorbar(
+    aes(ymin = ci_lower, ymax = ci_upper),
+    size = 0.3,
+    width = 0.2,
+    position = position_dodge(1)
+  ) #is there a better way to deal with this?
 
 # summary_df %>% 
 #   ungroup() %>% 
 #   group_by(age, has_comp) %>% 
 #   langcog::multi_boot_standard(col = "prop_correct")
+```
+
+Now plot RT by trial type and age
+```{r}
+
+summary_rt_df <- 
+  df %>% 
+  group_by(age, subjectID, has_comp) %>% 
+  summarize(mean_rt = mean(RT, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  group_by(has_comp, age) %>% 
+  langcog::multi_boot_standard(col = "mean_rt")
+
+summary_rt_df %>% 
+  ggplot(aes(x = age, y = mean, fill = has_comp)) +
+  geom_col(position = "dodge", width = 1) +
+  geom_errorbar(
+    aes(ymin = ci_lower, ymax = ci_upper),
+    size = 0.3,
+    width = 0.2,
+    position = position_dodge(1)
+  )
+
+
+
 ```
 
 
