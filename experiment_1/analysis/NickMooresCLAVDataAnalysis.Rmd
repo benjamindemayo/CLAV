@@ -35,7 +35,7 @@ library(fs)
 
 #file paths
 project_root <- here::here()
-files <- dir_ls(path(project_root, "experiment_1", "data"))
+files <- dir_ls(path(project_root, "experiment_1", "full_dataset"))
 demographics <- path(project_root, "clav_demographics.csv")
 ```
 
