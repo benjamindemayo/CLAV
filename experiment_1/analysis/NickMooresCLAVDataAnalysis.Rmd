@@ -45,7 +45,8 @@ Load in the data from the data files:
 
 d <- 
   files %>% 
-  map_df(~read_csv(.)) #read all of the CSV's into one data frame
+  map_df(~read_csv(.)) %>% #read all of the CSV's into one data frame
+  select(-`X16`)
 
 ```
 
