@@ -15,21 +15,21 @@ I first clear all previous variables and load libraries for data manipulation an
 rm(list=ls())
 
 library(tidyverse)
-library(psych)
-library(stringdist)
-library(irr)
-library(gpairs)
-library(mcmc)
-library(boot)
-library(mlogit)
-library(corrplot)
-library(GPArotation)
-library(RColorBrewer)
-library(GGally)
-library(lme4)
-library(lmerTest)
-library(grid)
-library(reshape2)
+# library(psych)
+# library(stringdist)
+# library(irr)
+# library(gpairs)
+# library(mcmc)
+# library(boot)
+# library(mlogit)
+# library(corrplot)
+# library(GPArotation)
+# library(RColorBrewer)
+# library(GGally)
+# library(lme4)
+# library(lmerTest)
+# library(grid)
+# library(reshape2)
 library(fs)
 
 
@@ -62,16 +62,6 @@ subs
 ```
 We find that there is some bug (?) such that occasionally identical trials are repeated. These should likely be dropped. 
 
-```{r}
-
-A <- filter(d, subjectID %in% c(21))
-```
-
-```{r}
-count(ungroup(subs))
-```
-
-
 
 ### Clean the Dataframe
 
@@ -80,10 +70,13 @@ count(ungroup(subs))
 I get a sense of the distribution of the data
 ```{r}
 
-m.rt <- exp(mean(log(d$RT),na.rm = TRUE)) 
+summary(d)
+
+m.rt <- exp(mean(log(d$RT), na.rm = TRUE)) 
+
 #take log average of RT: average natural logs of RTs, then take the exponential of that
 
-#from benny - why is he doing thhis log thing?
+#from benny - why is he doing this log thing?
 
 sd.rt <- exp(sd(log(d$RT),na.rm = TRUE)) #geometric standard deviation: exponentiated value of the standard deviation of the log-transformed values
 
@@ -121,7 +114,8 @@ df <-
   mutate(
     subjectID = factor(subjectID),
     age = factor(age)
-  )
+  ) %>% 
+  filter(!is.na(age))
 
 
 ```
@@ -174,6 +168,11 @@ summary_rt_df %>%
     size = 0.3,
     width = 0.2,
     position = position_dodge(1)
+  ) +
+  labs(
+    title = "Reaction time by age and trial type",
+    subtitle = "3-year-olds are slower to disambiguate using spoken speech than 4's and 5's",
+    y = "reaction time (secs)"
   )
 
 
