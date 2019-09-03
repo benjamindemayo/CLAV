@@ -90,6 +90,7 @@ qplot(RT, data = d) +
 
 And I subset the data, such that it excludes trials where the reaction time was greater than +-2 SDs from the mean.
 ```{r}
+#read in demographics even though they are incomplete
 demos <- 
   read_csv(demographics)
 
@@ -141,12 +142,12 @@ summary_df %>%
     size = 0.3,
     width = 0.2,
     position = position_dodge(1)
-  ) #is there a better way to deal with this?
+  ) #is there a better way to deal with this? 
 
 # summary_df %>% 
 #   ungroup() %>% 
 #   group_by(age, has_comp) %>% 
-#   langcog::multi_boot_standard(col = "prop_correct")
+#   langcog::multi_boot_standard(col = "prop_correct") 
 ```
 
 Now plot RT by trial type and age
