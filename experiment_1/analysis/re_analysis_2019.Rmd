@@ -17,6 +17,7 @@ rm(list = ls())
 library(tidyverse)
 library(lmerTest)
 library(fs)
+library(lubridate)
 
 
 #file paths
@@ -58,15 +59,15 @@ df <-
   mutate(
     subjectID = factor(subjectID),
   ) %>% 
-  filter(!is.na(age))
+  filter(!is.na(age)) %>% 
+  mutate(
+    age = lubridate::interval(mdy(BirthDate), mdy(TestDate))/lubridate::years(1),
+    age_years = factor(floor(age))
+  )
 
 
 demo_participant_n <- length(unique(df$subjectID))
 mean_age <- mean(df$age) %>% round(2)
-
-df <- 
-  df %>% 
-  mutate(age = factor(age))
 
 ```
 
@@ -78,7 +79,7 @@ by_age <-
   group_by(subjectID) %>% 
   slice(1) %>% 
   ungroup() %>% 
-  count(age, gender)
+  count(age_years, gender)
 
 knitr::kable(by_age)
 
@@ -136,18 +137,35 @@ df <-
 
 #### Analysis: Aggregating Mean RTs and Proportion Correct
 
+Various visualizations of the data.
+
 ```{r message=FALSE, warning=FALSE}
+
+summary_age_continuous <- 
+  df %>% 
+  group_by(subjectID, has_comp, age) %>% 
+  summarise(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
+  ungroup()
+
+summary_age_continuous %>% 
+  ggplot(aes(age, prop_correct, color = has_comp)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  coord_cartesian(xlim = c(3, 5)) +
+  theme_minimal()
+
+
 summary_df <- 
   df %>% 
-  group_by(subjectID, age, has_comp) %>% 
+  group_by(subjectID, age_years, has_comp) %>% 
   summarize(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
   ungroup() %>% 
-  group_by(age, has_comp) %>% 
+  group_by(age_years, has_comp) %>% 
   langcog::multi_boot_standard(col = "prop_correct")
 
  
 summary_df %>% 
-  ggplot(aes(age, fill = has_comp)) +
+  ggplot(aes(age_years, fill = has_comp)) +
   geom_col(aes(y = mean), position = "dodge", width = 1) +
   geom_errorbar(
     aes(ymin = ci_lower, ymax = ci_upper),
@@ -185,14 +203,14 @@ summary_df_no_age %>%
 
 summary_df_no_trial_type <- 
   df %>% 
-  group_by(subjectID, age) %>% 
+  group_by(subjectID, age_years) %>% 
   summarize(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
   ungroup() %>% 
-  group_by(age) %>% 
+  group_by(age_years) %>% 
   langcog::multi_boot_standard(col = "prop_correct")
 
 summary_df_no_trial_type %>% 
-  ggplot(aes(age)) +
+  ggplot(aes(age_years)) +
   geom_col(aes(y = mean), position = "dodge", width = 1) +
   geom_errorbar(
     aes(ymin = ci_lower, ymax = ci_upper),
@@ -212,14 +230,14 @@ Now we plot RT by trial type and age.
 
 summary_rt_df <- 
   df %>% 
-  group_by(age, subjectID, has_comp) %>% 
+  group_by(age_years, subjectID, has_comp) %>% 
   summarize(mean_rt = mean(RT, na.rm = TRUE)) %>% 
   ungroup() %>% 
-  group_by(has_comp, age) %>% 
+  group_by(has_comp, age_years) %>% 
   langcog::multi_boot_standard(col = "mean_rt")
 
 summary_rt_df %>% 
-  ggplot(aes(x = age, y = mean, fill = has_comp)) +
+  ggplot(aes(x = age_years, y = mean, fill = has_comp)) +
   geom_col(position = "dodge", width = 1) +
   geom_errorbar(
     aes(ymin = ci_lower, ymax = ci_upper),
@@ -245,4 +263,4 @@ model <- glmer(is.correct ~ age + has_comp + age:has_comp + (has_comp | subjectI
 summary(model)
 ```
 
-The model fails to converge with age as a categorical variable.
+The model fails to converge with age as a categorical variable. As a continuous variable, the model shows a significant main effect of age on accuracy, but shows no effect of trial type or age-trial type interaction on accuracy, which is puzzling given visualizations of the data.
