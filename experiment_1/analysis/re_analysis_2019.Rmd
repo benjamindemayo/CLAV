@@ -11,7 +11,7 @@ output:
 
 ### Intro and Imports
 I first clear all previous variables and load libraries for data manipulation and graphing
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 rm(list = ls())
 
 library(tidyverse)
@@ -25,6 +25,7 @@ project_root <- here::here()
 files <- dir_ls(path(project_root, "experiment_1", "full_dataset"))
 demographics <- path(project_root, "clav_demographics.csv")
 ```
+
 
 We then load in data from all of the individual data files. 
 ```{r message=FALSE, warning=FALSE}
@@ -124,13 +125,13 @@ qplot(RT, data = df) +
 ```
 
 
-Here, we trim off trials with very short or long reaction times.
+Here, we trim off trials with very short or long reaction times, center age and add a column for log RT.
 ```{r message=FALSE, warning=FALSE}
 
 df <- 
   df %>% 
-  filter(RT > m.rt - (2 * sd.rt) & RT < m.rt + (2 * sd.rt)) #take out kids with weird RT's
-
+  filter(RT > m.rt - (2 * sd.rt) & RT < m.rt + (2 * sd.rt)) %>% #take out kids with weird RT's
+  mutate(age_c = age - mean(df$age), log_rt = log(RT))
 
 ```
 
@@ -152,7 +153,12 @@ summary_age_continuous %>%
   geom_point() +
   geom_smooth(method = "loess") +
   coord_cartesian(xlim = c(3, 5)) +
-  theme_minimal()
+  theme_minimal() +
+  labs(
+    title = "Task accuracy by age and trial type",
+    subtitle = "Each point represents one child in one condition",
+    y = "proportion correct"
+  )
 
 
 summary_df <- 
@@ -179,53 +185,15 @@ summary_df %>%
     subtitle = "All children succeed in non-competitor trials;\n4- and 5-year-olds are more accurate than 3-year-olds on competitor trials"
   )
 
-summary_df_no_age <- 
-  df %>% 
-  group_by(subjectID, has_comp) %>% 
-  summarize(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
-  ungroup() %>% 
-  group_by(has_comp) %>% 
-  langcog::multi_boot_standard(col = "prop_correct")
 
-summary_df_no_age %>% 
-  ggplot(aes(has_comp)) +
-  geom_col(aes(y = mean), position = "dodge", width = 1) +
-  geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    size = 0.3,
-    width = 0.2,
-    position = position_dodge(1)
-  ) + #is there a better way to deal with this? 
-  labs(
-    y = "accuracy",
-    title = "Accuracy by trial type"
-  )
 
-summary_df_no_trial_type <- 
-  df %>% 
-  group_by(subjectID, age_years) %>% 
-  summarize(prop_correct = mean(is.correct, na.rm = TRUE)) %>% 
-  ungroup() %>% 
-  group_by(age_years) %>% 
-  langcog::multi_boot_standard(col = "prop_correct")
-
-summary_df_no_trial_type %>% 
-  ggplot(aes(age_years)) +
-  geom_col(aes(y = mean), position = "dodge", width = 1) +
-  geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    size = 0.3,
-    width = 0.2,
-    position = position_dodge(1)
-  ) + #is there a better way to deal with this? 
-  labs(
-    y = "accuracy",
-    title = "Accuracy by age"
-  )
 
 ```
 
+Both plots clearly demonstrate that children are performing much better on the non-competitor trials than on the competitor trials, which is expected. We also see an effect of age, such that overall task performance improves as children develop.
+
 Now we plot RT by trial type and age.
+
 ```{r message=FALSE, warning=FALSE}
 
 summary_rt_df <- 
@@ -251,16 +219,46 @@ summary_rt_df %>%
     y = "reaction time (secs)"
   )
 
+rt_age_continuous <- 
+  df %>% 
+  group_by(subjectID, has_comp, age) %>% 
+  summarize(mean_rt = mean(RT, na.rm = TRUE)) %>% 
+  ungroup()
+
+rt_age_continuous %>% 
+  ggplot(aes(age, mean_rt, color = has_comp)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  coord_cartesian(xlim = c(3, 5)) +
+  theme_minimal() +
+  labs(
+    title = "Reaction time by age and trial type",
+    subtitle = "Each point represents one child in one condition",
+    y = "mean reaction time (secs)"
+  )
+
 
 
 ```
+
+Both plots show that younger children are slower than older children in general, although there does not appear to be a strong trend such that children improve more in the competitor (difficult) trials than those without a competitor stimulus.
+
 
 Inferential statistics:
 
 ```{r}
-model <- glmer(is.correct ~ age + has_comp + age:has_comp + (has_comp | subjectID) + (1 | tar_name), data = df, family = "binomial")
+model <- glmer(is.correct ~ age_c * has_comp + (has_comp | subjectID) + (1 | tar_name), data = df, family = "binomial")
 
 summary(model)
 ```
 
-The model fails to converge with age as a categorical variable. As a continuous variable, the model shows a significant main effect of age on accuracy, but shows no effect of trial type or age-trial type interaction on accuracy, which is puzzling given visualizations of the data.
+The model fails to converge with age as a categorical variable. As a continuous variable, the model shows significant main effects of trial type and age on accuracy. We do not see an interaction between age and trial type.
+
+```{r}
+rt_model <- 
+  lmer(log_rt ~ age_c * has_comp + (has_comp | subjectID) + (1 | tar_name), data = df)
+
+summary(rt_model)
+```
+
+When we fit a linear mixed-effects model to the data to predict log RT, we see no effect of age or trial type on reaction time. 
